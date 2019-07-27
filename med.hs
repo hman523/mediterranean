@@ -3,27 +3,37 @@ import System.Environment
 import System.Exit
 import System.IO
 import qualified Data.Map as Map
-import Data.Text as Tx(Text, drop, take, pack, unpack)
+import Data.Text as Tx (Text, pack, unpack, take, takeEnd)
+import Data.Text.Internal.Search
 import Data.List
 import Data.Maybe
 
-containsParens :: String -> Bool
-containsParens str = elem '(' str
+splitchars = " ()[]{};"
+--getIndexesHelper
+gIH text delim = indices (Tx.pack delim) (Tx.pack text)
+getIndexes :: String -> String -> [Int]
+getIndexes _ "" = []
+getIndexes text delims = (union (gIH text (head delims)) (getIndexes text (tail delims)))
 
-textBeforeParen :: String -> String
-textBeforeParen str = Tx.unpack (Tx.take (fromMaybe 0 (elemIndex '(' str)) (Tx.pack str))
+--https://stackoverflow.com/questions/48369242/in-haskell-how-can-i-get-a-substring-of-a-text-between-two-indices
+slice :: Int -> Int -> Text -> Text
+slice a b text = takeEnd a (Data.Text.take b text)
 
-textAfterParen :: String -> String
-textAfterParen str = Tx.unpack (Tx.drop (fromMaybe 0 (elemIndex '(' str)) (Tx.pack str))
+splitByIndexes :: String -> [Int] -> [String]
+splitByIndexes _ ([]) = []
+splitByIndexes _ (x:[]) = []
+splitByIndexes str lst = (Tx.unpack (slice (lst !! 0) (lst !! 1) str)) ++ splitByIndexes str (tail (tail lst))
+
+parseCode :: String -> [String]
+parseCode "" = []
+parseCode str = splitByIndexes str ([0] ++ (sort (getIndexes str splitchars)) ++ [(length str)])
 
 itToEngDict = Map.fromList([
   ("se", "if"), 
   ("per", "for")])
 
 translateItToEng :: String -> String
-translateItToEng x = if containsParens x 
-  then (translateItToEng (textBeforeParen x) ++ textAfterParen x)
-  else if Map.member x itToEngDict
+translateItToEng x = if Map.member x itToEngDict
     then itToEngDict Map.! x
 	else x
 
@@ -34,7 +44,7 @@ main = do
 	else putStrLn $ "Compiling file " ++ head args
   let filename = head args
   contents <- readFile filename
-  let output = unwords (map translateItToEng (words contents))
+  let output = join (map translateItToEng (parseCode contents))
   writeFile (filename ++ ".c") output
   --If you reach this point, exit successfully
   exitSuccess 
